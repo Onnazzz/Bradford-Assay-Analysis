@@ -1,0 +1,220 @@
+---
+title: "Bradford Assay Analysis"
+output: html_document
+date: "2025-04-19"
+---
+
+Set work directory and load libraries
+
+```{r}
+setwd("Work_Directory")    
+library(dplyr)
+library(ggplot2)
+```
+
+Load, clean and order the Data from the ".csv" document. 
+
+```{r}
+# Insert your ".cvs" document as Data.
+Data = read.csv("Nameofyourdocument.csv", header = F)
+# Delete first line; label line.
+Data <- Data[-1, ]
+# Delete the first and last column; label and wavelength respectively.
+Data <- Data[, -c(1, ncol(Data))]
+# Create a vector for the Data reorganize.
+reorganize_values <- numeric()
+# Convert all values to numeric and add the values to a vector. 
+for (i in 1:nrow(Data)) {row <- as.numeric(Data[i, ])
+  reorganize_values <- c(reorganize_values, row)}
+# Convert the values from the vector to a "Data frame".
+new_data_frame <- data.frame(Valores = reorganize_values)
+# Select the rows with sample or standard values. 
+# This change depending in your total samples and standard values. 
+new_data_frame <- data.frame(new_data_frame[1:57, ])
+# Rename the default name of the column of the data frame.
+values <- new_data_frame$new_data_frame.1.57...
+# Convert the vector into a matrix, were columns are each triplicate.
+matrix <- matrix(values, nrow = 3, byrow = FALSE)
+# Convert the matrix to a Data frame, and change the name the standards for letters (A to I).
+Data <- as.data.frame(matrix)
+colnames(Data)[1:9] <- letters[1:9]
+# Print to check the actualized data frame.
+print(Data)
+# Use the next code if values wants to be taken out. 
+    # Data <- Data %>% select(-V16, -V20, -V24)
+    # Data <- Data %>% select(a:i, V24, V28:V32)
+```
+
+
+Calculation of the averages of each sample or standard.
+
+```{r}
+# Create a vector to save the averages results. 
+column_means = numeric(ncol(Data))
+# Calculate and save the mean of each column and save it.
+for (i in seq_along(Data)){column_means[i] = mean(Data[[i]])}
+# Designate the respective names to the standards.
+names(column_means) = names(Data)
+# Print to check the correspondence of the names and values.
+print(column_means)
+```
+
+
+To calculate the absorbency of each standard or samples, "I" that doesn't have protein, being the detergent compatible bradford assay reagent absorbency shift. So, we are going to use it as the subtraction from all averages to obtain light absorbency when adding the protein.
+
+```{r}
+# Create a vector to save the subtract results.
+Absorbency = numeric(length = length(column_means))
+# Calculate the subtract and save it.
+reference_mean = column_means["i"]
+for (i in seq_along(column_means)) {
+  Absorbency[i] = column_means[i] - reference_mean}
+# Designate the respective names to the standards.
+names(Absorbency) = names(column_means)
+# Print to check names and values.
+print(Absorbency)
+```
+
+
+Creation of the vector with the correspondent albumin concentrations in micrograms/ml, to construct the standard concentration curve. 
+
+```{r}
+# Create a vector with for the standard concentrations and add them respectively.
+Albumin_concen = numeric(length = length(Absorbency))
+Albumin_concen = c(2000, 1500, 1000, 750, 500, 250, 125, 25, 0)
+# Create a data frame with the absorbency results and albumin concentrations of the standards. 
+df <- data.frame(
+  Absorbency_ai = c(Absorbency[1:4], Absorbency[5:9]),
+  Albumin_concen_ai = c(Albumin_concen[1:4], Albumin_concen[5:9]))
+# Graph the standard concentration curve. 
+ggplot(df, aes(x = Albumin_concen_ai, y = Absorbency_ai)) +
+  geom_point() +            
+  geom_line() +             
+  labs(title = "Albumin Concentration vs Absorbancy",
+       x = "Albumin Concentration",
+       y = "Absorbancy") +
+  theme_minimal()
+```
+
+
+Based on the standard curve results construct a linear regression model. It is important to look that the $R^2$ of the model is near $1$. Then solving for "x" (concentration) for posterior calculation of sample protein concentration. 
+
+```{r}
+# Fit the linear model
+model <- lm(Absorbency_ai ~ Albumin_concen_ai, data = df)
+# Extract; coefficients, intercept (b0) and slope (b1).
+coefficients <- coef(model)
+intercept <- coefficients[1]
+slope <- coefficients[2]
+# The equation obtained, solving for "x"; 
+cat("In this case: x = (y - ", intercept, ") /", slope)
+```
+
+
+Calculation of the protein in each samples in microg/ml, and convert them to microg/microl.
+
+```{r}
+# Select of the absorbency results of just the samples.
+Absorbency_Samples <- Absorbency[10:19]
+# Create a vector for the protein samples results in both microg/ml and microg/microl.
+Concen_per_µgml = numeric(length = length(Absorbency_Samples))
+Concen_per_µgµl = numeric(length = length(Concen_per_µgml))
+# Calculation of the protein concentration of each samples and save it.
+for (i in seq_along(Absorbency_Samples)) {
+  Concen_per_µgml[i] = (Absorbency_Samples[i] - intercept) / slope}
+# Assigned "0" to negative concentration results.
+#  if (concentration < 0) {
+#    message("Concentración negativa en la muestra ", i, ". Se ajustará a 0.")
+#    concentration <- 0
+#    Concen_per_µgml[i] <- concentration}
+# Convert the results to microg/microl; 
+for (i in seq_along(Concen_per_µgml)) {
+  Concen_per_µgµl[i] = Concen_per_µgml[i]/1000}
+# Print to check names and values.
+print(Concen_per_µgµl)
+```
+
+
+For the bradford protocol in HeLa and K-562 cells, we dilute our sample in a 1:30 ratio, so to obtain the real protein concentration, we need to multiply the above concentration per 30 to get the concentration of each sample. In the case of the CD34+ cells, a 1:9 ratio is used, so we multiply by 9. 
+
+```{r}
+# Create a vector for the real protein results.
+Concen_per_µgµl30 = numeric(length = length(Concen_per_µgµl))
+# Multiply and save the results.
+for (i in seq_along(Concen_per_µgµl)) {
+  Concen_per_µgµl30[i] = Concen_per_µgµl[i]*9}
+# Print to check names and values.
+print(Concen_per_µgµl30)
+```
+
+
+To prepare samples for WB analysis, the final volume to be loaded into the gel needs to take into account the addition of 25% lithium dodecyl sulfate (LDS) buffer, after which the sample is brought up to the required final volume using CEB. In cases where the sample volume is high, it is possible to omit CEB, but it is preferable to maintain the volume of LDS buffer closer to the 25%. Details in the WB protocol (section 9.5).
+
+We first use the least concentrated sample to determine the volume needed to load a specific amount of protein. This helps us decide the required well capacity for the analysis. For example, CD34+ cells require larger wells because they need greater sample volumes to load, as an example, in this case 40 micrograms of protein. These calculations are performed using the mass concentration equation, solving for volume.
+
+$$Concentration = \frac{Mass}{Vol}   -->  Vol(µl) = \frac{Mass(µg)}{Concentration(\frac{µg}{µl})} $$
+
+```{r}
+# Select the sample with less protein.
+less = min(Concen_per_µgµl30)
+# Define the micrograms (mass) of protein to load.
+Mass = 40
+# Calculate the required "Volume" in microl. 
+Vol = Mass/less
+# Print to analyse the result. 
+print(paste(Vol, "ul"))
+```
+
+If the anterior result is possible to achieve and also appropriate for the load capacity of the WB analysis, calculate for all the samples. 
+
+```{r}
+# Create a vector for the volume results.
+Vols = numeric(length = length(Concen_per_µgµl30))
+# Calculate and save the volume results.
+for (i in seq_along(Concen_per_µgµl30)){
+  Vols[i] = Mass/Concen_per_µgµl30[i]}
+# Print to analyse the results.
+print(paste(round(Vols, 4), "ul"))
+```
+
+
+In this case if we take into account a 25microl final volume, we first calculate the amount of buffer to add and the remaining volume to also calculate the required CEB amount.
+
+```{r}
+# Define the final total volume.
+Final_Vol = 25
+# Calculate the buffer per sample needed.
+Final_LDS = Final_Vol*0.25
+# Calculate the remaining volume, after buffer subtraction.
+Final_no_LDS = Final_Vol - Final_LDS
+# Print to analyse the results.
+cat("Buffer per sample;",Final_LDS,"and remaining volume;",Final_no_LDS)
+```
+
+
+Calculation of the CEB volume to add for each sample, by subtracting the sample volume from the remaining volume mentioned above.
+ 
+```{r}
+# Create a vector to save CEB volume results.
+CEB_add_per_sample = numeric(length = length(Concen_per_µgµl30))
+# Calculate and save the CEB volume results.
+for (i in seq_along(Concen_per_µgµl30)) {
+  CEB_add_per_sample[i] = Final_no_LDS - Vols[i]}
+# Print to analyse the results.
+print(paste(round(CEB_add_per_sample, 4), "ul"))
+```
+
+
+Generation of a table indicating the required volumes of sample, LDS buffer, and CEB for each sample.
+ 
+
+```{r}
+df_all <- data.frame(
+  Sampleconcen_microg_x_microl = Concen_per_µgµl30,
+  Samples_microl = Vols,
+  LDS_microl = Final_LDS,
+  CEB_microl = CEB_add_per_sample,
+  Protein_micrograms = Mass
+)
+print(df_all)
+```
