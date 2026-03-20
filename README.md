@@ -6,11 +6,17 @@ in comparison to a standard curve generated alongside samples using defined BSA 
 All measurements (standards and samples) are performed in triplicate.
 
 Key parameters to take into account for this assay:
+
     Absorbance wavelength: 595 nm
+
     Standard curve range: 2000, 1500, 1000, 750, 500, 250, 125, 25, 0 µg/mL
+    
     Sample dilutions:
+    
         HeLa and K-562; 1:30 in DPBS
+        
         CD34+; 1:9 in DPBS (higher protein concentration required)
 
 Input Requirements
+    
     Exported .csv file from microplate reader.
